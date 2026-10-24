@@ -1,0 +1,7 @@
+This is your target folder for your coding and data manipulation outputs.
+* I usually add the following folders within the output folder so it is organized:
+tables
+figures
+data_adjusted
+
+Feel free to use them as well or delete them if they don't work for you.

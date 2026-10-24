@@ -1,0 +1,20 @@
+All code files here. 
+Notes on naming and generating code files:
+* All code files should be .rmd files. Markdown allows you a ton of flexibility in your workflow and can render in several usable formats - straight markdown (.md) is basically like using a text file versus a Word doc; all formatting is lost.
+
+* To export a graph or image as a .svg file is a bit tricky in .rmd files. If that is important to you, copy paste the data and code and run it in a flat .r file to export. 
+
+* I also keep a junkyard file for things that didn't work the way I wanted or are alternate ways to do a task that are not important in the moment, but i may want to use for something else later.
+
+* Comment your code chunks until you're sick of yourself! You'll be greatful when you return to the work and can easily understand what you were working on without having to play Indiana Jones to figure out what you really meant.
+
+
+* Follow the naming convention in the example below. 
+00-data_cleaning.rmd
+01-eda.rmd
+02-community_analysis.rmd
+03-visualizations.rmd
+99-junkyard.rmd
+
+You'll change the name after the numbers for what you're actually doing. The reason we use double digits is because you don't delete or overwrite what you've done; you'll regret it at the worst possible time. For example, if your 01-eda.rmd file isn't exactly what you want, you create 01.1-eda.rmd, 01.2-eda.rmd, etc. to refine what you're doing. Note, eda= Exploratory Data Analysis.
+

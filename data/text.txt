@@ -1,0 +1,2 @@
+All raw, unmanipulated data goes here. 
+* Name it something clear to understand. You will rename it as an object in your code, so no need to abbreviate here unless you want to question what's in the file every single time you look at the name.
