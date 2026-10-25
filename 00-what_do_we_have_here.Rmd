@@ -20,13 +20,13 @@ library(tibble) #creating tables
 
 nc19 <- nc_open("data/raw/MarineWaterProfilesAndNutrientsYear2019.nc")
 nc20 <- nc_open("data/raw/MarineWaterProfilesAndNutrientsYear2020.nc")
-nc21 <- nc_open("data/raw/MarineWaterProfilesAndNutrientsYear2021.nc")
+nc23 <- nc_open("data/raw/MarineWaterProfilesAndNutrientsYear2023.nc")
 nc22 <- nc_open("data/raw/MarineWaterProfilesAndNutrientsYear2022.nc")
 nc23 <- nc_open("data/raw/MarineWaterProfilesAndNutrientsYear2023.nc")
 nc24 <- nc_open("data/raw/MarineWaterProfilesAndNutrientsYear2024.nc")
 nc25 <- nc_open("data/raw/MarineWaterProfilesAndNutrientsYear2025.nc")
 
-#glimpse(nc19)
+#glimpse(nc20)
 
 ```
 
@@ -34,25 +34,25 @@ nc25 <- nc_open("data/raw/MarineWaterProfilesAndNutrientsYear2025.nc")
 ```{r}
 
 # 1. Station-level metadata
-stations <- tibble(station_number = as.vector(ncvar_get(nc19, "station_number")), latitude = as.vector(ncvar_get(nc19, "Latitude")), longitude = as.vector(ncvar_get(nc19, "Longitude")))
+stations <- tibble(station_number = as.vector(ncvar_get(nc20, "station_number")), station_name = as.vector(ncvar_get(nc20, "Station")), latitude = as.vector(ncvar_get(nc20, "Latitude")), longitude = as.vector(ncvar_get(nc20, "Longitude")))
 
 # 2. Profile-level metadata
-profiles <- tibble(profile_index = as.vector(ncvar_get(nc19, "profile_index")), station_number = as.vector(ncvar_get(nc19, "station_index")), field_date = as.Date(as.vector(ncvar_get(nc19, "FieldDate")), origin = "1970-01-01"))
+profiles <- tibble(profile_index = as.vector(ncvar_get(nc20, "profile_index")), station_number = as.vector(ncvar_get(nc20, "station_index")), field_date = as.Date(as.vector(ncvar_get(nc20, "FieldDate")), origin = "1970-01-01"))
 
 # 3. Observation-level measurements
 observations <- tibble(
-  profile_index = as.vector(ncvar_get(nc19, "obs_index")),
-  depth_m = as.vector(ncvar_get(nc19, "Depth")),
+  profile_index = as.vector(ncvar_get(nc20, "obs_index")),
+  depth_m = as.vector(ncvar_get(nc20, "Depth")),
 
-  temperature = as.vector(ncvar_get(nc19, "Temp")),
-  salinity = as.vector(ncvar_get(nc19, "Salinity")),
-  dissolved_oxygen = as.vector(ncvar_get(nc19, "DOAdjusted")),
+  temperature = as.vector(ncvar_get(nc20, "Temp")),
+  salinity = as.vector(ncvar_get(nc20, "Salinity")),
+  dissolved_oxygen = as.vector(ncvar_get(nc20, "DOAdjusted")),
 
-  nitrate = as.vector(ncvar_get(nc19, "NO3")),
-  nitrite = as.vector(ncvar_get(nc19, "NO2")),
-  ammonium = as.vector(ncvar_get(nc19, "NH4")),
-  phosphate = as.vector(ncvar_get(nc19, "PO4")),
-  silicate = as.vector(ncvar_get(nc19, "SiOH4"))
+  nitrate = as.vector(ncvar_get(nc20, "NO3")),
+  nitrite = as.vector(ncvar_get(nc20, "NO2")),
+  ammonium = as.vector(ncvar_get(nc20, "NH4")),
+  phosphate = as.vector(ncvar_get(nc20, "PO4")),
+  silicate = as.vector(ncvar_get(nc20, "SiOH4"))
 )
 
 # 4. Join measurements to profiles and stations
@@ -68,17 +68,15 @@ water_quality19 <- observations %>%
     relationship = "many-to-one"
   )
 
-nc_close(nc19)
+nc_close(nc20)
 
 # Verify resulting dataset
-glimpse(water_quality19)
+#glimpse(water_quality19)
 
 write_csv(water_quality19, "data/interim/water_quality19.csv")
 
 
 ```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
 
 # Filter any depths beyond where mussel ropes extend for anything that isn't a nutrient
 ```{r}
@@ -89,6 +87,7 @@ abiotic_rope19 <- water_quality19 %>%
   select(
     profile_index,
     station_number,
+    station_name,
     latitude,
     longitude,
     depth_m,
@@ -108,6 +107,7 @@ nutrients19 <- water_quality19 %>%
   select(
     profile_index,
     station_number,
+    station_name,
     latitude,
     longitude,
     depth_m,
@@ -123,3 +123,542 @@ write_csv(nutrients19, "data/working/nutrients_2019.csv")
 
 ```
 
+## Verify all "find and replace" parameters have not adjusted anything above this note (lines 1-125)
+
+# Year: 2020
+```{r}
+
+# 1. Station-level metadata
+stations <- tibble(station_number = as.vector(ncvar_get(nc20, "station_number")), station_name = as.vector(ncvar_get(nc20, "Station")), latitude = as.vector(ncvar_get(nc20, "Latitude")), longitude = as.vector(ncvar_get(nc20, "Longitude")))
+
+# 2. Profile-level metadata
+profiles <- tibble(profile_index = as.vector(ncvar_get(nc20, "profile_index")), station_number = as.vector(ncvar_get(nc20, "station_index")), field_date = as.Date(as.vector(ncvar_get(nc20, "FieldDate")), origin = "1970-01-01"))
+
+# 3. Observation-level measurements
+observations <- tibble(
+  profile_index = as.vector(ncvar_get(nc20, "obs_index")),
+  depth_m = as.vector(ncvar_get(nc20, "Depth")),
+
+  temperature = as.vector(ncvar_get(nc20, "Temp")),
+  salinity = as.vector(ncvar_get(nc20, "Salinity")),
+  dissolved_oxygen = as.vector(ncvar_get(nc20, "DOAdjusted")),
+
+  nitrate = as.vector(ncvar_get(nc20, "NO3")),
+  nitrite = as.vector(ncvar_get(nc20, "NO2")),
+  ammonium = as.vector(ncvar_get(nc20, "NH4")),
+  phosphate = as.vector(ncvar_get(nc20, "PO4")),
+  silicate = as.vector(ncvar_get(nc20, "SiOH4"))
+)
+
+# 4. Join measurements to profiles and stations
+water_quality20 <- observations %>%
+  left_join(
+    profiles,
+    by = "profile_index",
+    relationship = "many-to-one"
+  ) %>%
+  left_join(
+    stations,
+    by = "station_number",
+    relationship = "many-to-one"
+  )
+
+nc_close(nc20)
+
+# Verify resulting dataset
+#glimpse(water_quality20)
+
+write_csv(water_quality20, "data/interim/water_quality20.csv")
+
+# Filter any depths beyond where mussel ropes extend for anything that isn't a nutrient
+
+# Depth-appropriate abiotic measurements
+abiotic_rope20 <- water_quality20 %>%
+  filter(between(depth_m, 0, 13)) %>%
+  select(
+    profile_index,
+    station_number,
+    station_name,
+    latitude,
+    longitude,
+    depth_m,
+    temperature,
+    salinity,
+    dissolved_oxygen
+  )
+
+# Nutrients at all sampled depths
+nutrients20 <- water_quality20 %>%
+  filter(
+    if_any(
+      c(nitrate, nitrite, ammonium, phosphate, silicate),
+      ~ !is.na(.x)
+    )
+  ) %>%
+  select(
+    profile_index,
+    station_number,
+    station_name,
+    latitude,
+    longitude,
+    depth_m,
+    nitrate,
+    nitrite,
+    ammonium,
+    phosphate,
+    silicate
+  )
+
+write_csv(abiotic_rope20, "data/working/abiotic_rope_2020.csv")
+write_csv(nutrients20, "data/working/nutrients_2020.csv")
+
+```
+
+## Fix the 2021 data inputs- the replace function got me.
+# Year: 2021
+```{r}
+
+# 1. Station-level metadata
+stations <- tibble(station_number = as.vector(ncvar_get(nc24, "station_number")), station_name = as.vector(ncvar_get(nc24, "Station")), latitude = as.vector(ncvar_get(nc24, "Latitude")), longitude = as.vector(ncvar_get(nc24, "Longitude")))
+
+# 2. Profile-level metadata
+profiles <- tibble(profile_index = as.vector(ncvar_get(nc24, "profile_index")), station_number = as.vector(ncvar_get(nc24, "station_index")), field_date = as.Date(as.vector(ncvar_get(nc24, "FieldDate")), origin = "1970-01-01"))
+
+# 3. Observation-level measurements
+observations <- tibble(
+  profile_index = as.vector(ncvar_get(nc24, "obs_index")),
+  depth_m = as.vector(ncvar_get(nc24, "Depth")),
+
+  temperature = as.vector(ncvar_get(nc24, "Temp")),
+  salinity = as.vector(ncvar_get(nc24, "Salinity")),
+  dissolved_oxygen = as.vector(ncvar_get(nc24, "DOAdjusted")),
+
+  nitrate = as.vector(ncvar_get(nc24, "NO3")),
+  nitrite = as.vector(ncvar_get(nc24, "NO2")),
+  ammonium = as.vector(ncvar_get(nc24, "NH4")),
+  phosphate = as.vector(ncvar_get(nc24, "PO4")),
+  silicate = as.vector(ncvar_get(nc24, "SiOH4"))
+)
+
+# 4. Join measurements to profiles and stations
+water_quality24 <- observations %>%
+  left_join(
+    profiles,
+    by = "profile_index",
+    relationship = "many-to-one"
+  ) %>%
+  left_join(
+    stations,
+    by = "station_number",
+    relationship = "many-to-one"
+  )
+
+nc_close(nc24)
+
+# Verify resulting dataset
+#glimpse(water_quality24)
+
+write_csv(water_quality24, "data/interim/water_quality24.csv")
+
+# Filter any depths beyond where mussel ropes extend for anything that isn't a nutrient
+
+# Depth-appropriate abiotic measurements
+abiotic_rope24 <- water_quality24 %>%
+  filter(between(depth_m, 0, 13)) %>%
+  select(
+    profile_index,
+    station_number,
+    station_name,
+    latitude,
+    longitude,
+    depth_m,
+    temperature,
+    salinity,
+    dissolved_oxygen
+  )
+
+# Nutrients at all sampled depths
+nutrients24 <- water_quality24 %>%
+  filter(
+    if_any(
+      c(nitrate, nitrite, ammonium, phosphate, silicate),
+      ~ !is.na(.x)
+    )
+  ) %>%
+  select(
+    profile_index,
+    station_number,
+    station_name,
+    latitude,
+    longitude,
+    depth_m,
+    nitrate,
+    nitrite,
+    ammonium,
+    phosphate,
+    silicate
+  )
+
+write_csv(abiotic_rope24, "data/working/abiotic_rope_2024.csv")
+write_csv(nutrients24, "data/working/nutrients_2424.csv")
+
+```
+
+# Year: 2022
+```{r}
+
+# 1. Station-level metadata
+stations <- tibble(station_number = as.vector(ncvar_get(nc22, "station_number")), station_name = as.vector(ncvar_get(nc22, "Station")), latitude = as.vector(ncvar_get(nc22, "Latitude")), longitude = as.vector(ncvar_get(nc22, "Longitude")))
+
+# 2. Profile-level metadata
+profiles <- tibble(profile_index = as.vector(ncvar_get(nc22, "profile_index")), station_number = as.vector(ncvar_get(nc22, "station_index")), field_date = as.Date(as.vector(ncvar_get(nc22, "FieldDate")), origin = "1970-01-01"))
+
+# 3. Observation-level measurements
+observations <- tibble(
+  profile_index = as.vector(ncvar_get(nc22, "obs_index")),
+  depth_m = as.vector(ncvar_get(nc22, "Depth")),
+
+  temperature = as.vector(ncvar_get(nc22, "Temp")),
+  salinity = as.vector(ncvar_get(nc22, "Salinity")),
+  dissolved_oxygen = as.vector(ncvar_get(nc22, "DOAdjusted")),
+
+  nitrate = as.vector(ncvar_get(nc22, "NO3")),
+  nitrite = as.vector(ncvar_get(nc22, "NO2")),
+  ammonium = as.vector(ncvar_get(nc22, "NH4")),
+  phosphate = as.vector(ncvar_get(nc22, "PO4")),
+  silicate = as.vector(ncvar_get(nc22, "SiOH4"))
+)
+
+# 4. Join measurements to profiles and stations
+water_quality22 <- observations %>%
+  left_join(
+    profiles,
+    by = "profile_index",
+    relationship = "many-to-one"
+  ) %>%
+  left_join(
+    stations,
+    by = "station_number",
+    relationship = "many-to-one"
+  )
+
+nc_close(nc22)
+
+# Verify resulting dataset
+#glimpse(water_quality22)
+
+write_csv(water_quality22, "data/interim/water_quality22.csv")
+
+# Filter any depths beyond where mussel ropes extend for anything that isn't a nutrient
+
+# Depth-appropriate abiotic measurements
+abiotic_rope22 <- water_quality22 %>%
+  filter(between(depth_m, 0, 13)) %>%
+  select(
+    profile_index,
+    station_number,
+    station_name,
+    latitude,
+    longitude,
+    depth_m,
+    temperature,
+    salinity,
+    dissolved_oxygen
+  )
+
+# Nutrients at all sampled depths
+nutrients22 <- water_quality22 %>%
+  filter(
+    if_any(
+      c(nitrate, nitrite, ammonium, phosphate, silicate),
+      ~ !is.na(.x)
+    )
+  ) %>%
+  select(
+    profile_index,
+    station_number,
+    station_name,
+    latitude,
+    longitude,
+    depth_m,
+    nitrate,
+    nitrite,
+    ammonium,
+    phosphate,
+    silicate
+  )
+
+write_csv(abiotic_rope22, "data/working/abiotic_rope_2022.csv")
+write_csv(nutrients22, "data/working/nutrients_2022.csv")
+
+```
+
+# Year: 2024
+```{r}
+
+# 1. Station-level metadata
+stations <- tibble(station_number = as.vector(ncvar_get(nc24, "station_number")), station_name = as.vector(ncvar_get(nc24, "Station")), latitude = as.vector(ncvar_get(nc24, "Latitude")), longitude = as.vector(ncvar_get(nc24, "Longitude")))
+
+# 2. Profile-level metadata
+profiles <- tibble(profile_index = as.vector(ncvar_get(nc24, "profile_index")), station_number = as.vector(ncvar_get(nc24, "station_index")), field_date = as.Date(as.vector(ncvar_get(nc24, "FieldDate")), origin = "1970-01-01"))
+
+# 3. Observation-level measurements
+observations <- tibble(
+  profile_index = as.vector(ncvar_get(nc24, "obs_index")),
+  depth_m = as.vector(ncvar_get(nc24, "Depth")),
+
+  temperature = as.vector(ncvar_get(nc24, "Temp")),
+  salinity = as.vector(ncvar_get(nc24, "Salinity")),
+  dissolved_oxygen = as.vector(ncvar_get(nc24, "DOAdjusted")),
+
+  nitrate = as.vector(ncvar_get(nc24, "NO3")),
+  nitrite = as.vector(ncvar_get(nc24, "NO2")),
+  ammonium = as.vector(ncvar_get(nc24, "NH4")),
+  phosphate = as.vector(ncvar_get(nc24, "PO4")),
+  silicate = as.vector(ncvar_get(nc24, "SiOH4"))
+)
+
+# 4. Join measurements to profiles and stations
+water_quality24 <- observations %>%
+  left_join(
+    profiles,
+    by = "profile_index",
+    relationship = "many-to-one"
+  ) %>%
+  left_join(
+    stations,
+    by = "station_number",
+    relationship = "many-to-one"
+  )
+
+nc_close(nc24)
+
+# Verify resulting dataset
+#glimpse(water_quality24)
+
+write_csv(water_quality24, "data/interim/water_quality24.csv")
+
+# Filter any depths beyond where mussel ropes extend for anything that isn't a nutrient
+
+# Depth-appropriate abiotic measurements
+abiotic_rope24 <- water_quality24 %>%
+  filter(between(depth_m, 0, 13)) %>%
+  select(
+    profile_index,
+    station_number,
+    station_name,
+    latitude,
+    longitude,
+    depth_m,
+    temperature,
+    salinity,
+    dissolved_oxygen
+  )
+
+# Nutrients at all sampled depths
+nutrients24 <- water_quality24 %>%
+  filter(
+    if_any(
+      c(nitrate, nitrite, ammonium, phosphate, silicate),
+      ~ !is.na(.x)
+    )
+  ) %>%
+  select(
+    profile_index,
+    station_number,
+    station_name,
+    latitude,
+    longitude,
+    depth_m,
+    nitrate,
+    nitrite,
+    ammonium,
+    phosphate,
+    silicate
+  )
+
+write_csv(abiotic_rope24, "data/working/abiotic_rope_2024.csv")
+write_csv(nutrients24, "data/working/nutrients_2024.csv")
+
+```
+
+# Year: 2024
+```{r}
+
+# 1. Station-level metadata
+stations <- tibble(station_number = as.vector(ncvar_get(nc24, "station_number")), station_name = as.vector(ncvar_get(nc24, "Station")), latitude = as.vector(ncvar_get(nc24, "Latitude")), longitude = as.vector(ncvar_get(nc24, "Longitude")))
+
+# 2. Profile-level metadata
+profiles <- tibble(profile_index = as.vector(ncvar_get(nc24, "profile_index")), station_number = as.vector(ncvar_get(nc24, "station_index")), field_date = as.Date(as.vector(ncvar_get(nc24, "FieldDate")), origin = "1970-01-01"))
+
+# 3. Observation-level measurements
+observations <- tibble(
+  profile_index = as.vector(ncvar_get(nc24, "obs_index")),
+  depth_m = as.vector(ncvar_get(nc24, "Depth")),
+
+  temperature = as.vector(ncvar_get(nc24, "Temp")),
+  salinity = as.vector(ncvar_get(nc24, "Salinity")),
+  dissolved_oxygen = as.vector(ncvar_get(nc24, "DOAdjusted")),
+
+  nitrate = as.vector(ncvar_get(nc24, "NO3")),
+  nitrite = as.vector(ncvar_get(nc24, "NO2")),
+  ammonium = as.vector(ncvar_get(nc24, "NH4")),
+  phosphate = as.vector(ncvar_get(nc24, "PO4")),
+  silicate = as.vector(ncvar_get(nc24, "SiOH4"))
+)
+
+# 4. Join measurements to profiles and stations
+water_quality24 <- observations %>%
+  left_join(
+    profiles,
+    by = "profile_index",
+    relationship = "many-to-one"
+  ) %>%
+  left_join(
+    stations,
+    by = "station_number",
+    relationship = "many-to-one"
+  )
+
+nc_close(nc24)
+
+# Verify resulting dataset
+#glimpse(water_quality24)
+
+write_csv(water_quality24, "data/interim/water_quality24.csv")
+
+# Filter any depths beyond where mussel ropes extend for anything that isn't a nutrient
+
+# Depth-appropriate abiotic measurements
+abiotic_rope24 <- water_quality24 %>%
+  filter(between(depth_m, 0, 13)) %>%
+  select(
+    profile_index,
+    station_number,
+    station_name,
+    latitude,
+    longitude,
+    depth_m,
+    temperature,
+    salinity,
+    dissolved_oxygen
+  )
+
+# Nutrients at all sampled depths
+nutrients24 <- water_quality24 %>%
+  filter(
+    if_any(
+      c(nitrate, nitrite, ammonium, phosphate, silicate),
+      ~ !is.na(.x)
+    )
+  ) %>%
+  select(
+    profile_index,
+    station_number,
+    station_name,
+    latitude,
+    longitude,
+    depth_m,
+    nitrate,
+    nitrite,
+    ammonium,
+    phosphate,
+    silicate
+  )
+
+write_csv(abiotic_rope24, "data/working/abiotic_rope_2024.csv")
+write_csv(nutrients24, "data/working/nutrients_2024.csv")
+
+```
+
+
+# Year: 2025
+```{r}
+
+# 1. Station-level metadata
+stations <- tibble(station_number = as.vector(ncvar_get(nc25, "station_number")), station_name = as.vector(ncvar_get(nc25, "Station")), latitude = as.vector(ncvar_get(nc25, "Latitude")), longitude = as.vector(ncvar_get(nc25, "Longitude")))
+
+# 2. Profile-level metadata
+profiles <- tibble(profile_index = as.vector(ncvar_get(nc25, "profile_index")), station_number = as.vector(ncvar_get(nc25, "station_index")), field_date = as.Date(as.vector(ncvar_get(nc25, "FieldDate")), origin = "1970-01-01"))
+
+# 3. Observation-level measurements
+observations <- tibble(
+  profile_index = as.vector(ncvar_get(nc25, "obs_index")),
+  depth_m = as.vector(ncvar_get(nc25, "Depth")),
+
+  temperature = as.vector(ncvar_get(nc25, "Temp")),
+  salinity = as.vector(ncvar_get(nc25, "Salinity")),
+  dissolved_oxygen = as.vector(ncvar_get(nc25, "DOAdjusted")),
+
+  nitrate = as.vector(ncvar_get(nc25, "NO3")),
+  nitrite = as.vector(ncvar_get(nc25, "NO2")),
+  ammonium = as.vector(ncvar_get(nc25, "NH4")),
+  phosphate = as.vector(ncvar_get(nc25, "PO4")),
+  silicate = as.vector(ncvar_get(nc25, "SiOH4"))
+)
+
+# 4. Join measurements to profiles and stations
+water_quality25 <- observations %>%
+  left_join(
+    profiles,
+    by = "profile_index",
+    relationship = "many-to-one"
+  ) %>%
+  left_join(
+    stations,
+    by = "station_number",
+    relationship = "many-to-one"
+  )
+
+nc_close(nc25)
+
+# Verify resulting dataset
+#glimpse(water_quality25)
+
+write_csv(water_quality25, "data/interim/water_quality25.csv")
+
+# Filter any depths beyond where mussel ropes extend for anything that isn't a nutrient
+
+# Depth-appropriate abiotic measurements
+abiotic_rope25 <- water_quality25 %>%
+  filter(between(depth_m, 0, 13)) %>%
+  select(
+    profile_index,
+    station_number,
+    station_name,
+    latitude,
+    longitude,
+    depth_m,
+    temperature,
+    salinity,
+    dissolved_oxygen
+  )
+
+# Nutrients at all sampled depths
+nutrients25 <- water_quality25 %>%
+  filter(
+    if_any(
+      c(nitrate, nitrite, ammonium, phosphate, silicate),
+      ~ !is.na(.x)
+    )
+  ) %>%
+  select(
+    profile_index,
+    station_number,
+    station_name,
+    latitude,
+    longitude,
+    depth_m,
+    nitrate,
+    nitrite,
+    ammonium,
+    phosphate,
+    silicate
+  )
+
+write_csv(abiotic_rope25, "data/working/abiotic_rope_2025.csv")
+write_csv(nutrients25, "data/working/nutrients_2025.csv")
+
+```
+
+# Combine each data set so that 2019 - 2025 water quality and 2019 - 2025 nutrients are two compplete tables.
