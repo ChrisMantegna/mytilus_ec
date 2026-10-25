@@ -393,7 +393,7 @@ write_csv(nutrients22, "data/working/nutrients_2022.csv")
 
 ```
 
-# Year: 2024
+# Year: 2023
 ```{r}
 
 # 1. Station-level metadata
@@ -570,7 +570,6 @@ write_csv(abiotic_rope24, "data/working/abiotic_rope_2024.csv")
 write_csv(nutrients24, "data/working/nutrients_2024.csv")
 
 ```
-
 
 # Year: 2025
 ```{r}
@@ -662,3 +661,60 @@ write_csv(nutrients25, "data/working/nutrients_2025.csv")
 ```
 
 # Combine each data set so that 2019 - 2025 water quality and 2019 - 2025 nutrients are two compplete tables.
+```{r}
+
+library(purrr)
+library(stringr)
+
+# Directory where tables exist
+data_dir <- "../data/working"
+
+# Find files
+abiotic_files <- list.files(
+  data_dir,
+  pattern = "^abiotic_rope_20[0-9]{2}\\.csv$",
+  full.names = TRUE
+)
+
+nutrient_files <- list.files(
+  data_dir,
+  pattern = "^nutrients_20[0-9]{2}\\.csv$",
+  full.names = TRUE
+)
+
+# Function to import and label each year
+combine_years <- function(files) {
+  map_dfr(files, function(file) {
+    year <- as.integer(
+      str_extract(basename(file), "20[0-9]{2}")
+    )
+
+    read_csv(file, show_col_types = FALSE) %>%
+      mutate(sample_year = year, .before = 1)
+  })
+}
+
+# Create combined datasets
+abiotic_all <- combine_years(abiotic_files)
+
+nutrients_all <- combine_years(nutrient_files)
+
+# double check site profiles are not misrepresented
+abiotic_all <- abiotic_all %>%
+  mutate(
+    profile_uid = paste(sample_year, profile_index, sep = "_"),
+    .after = profile_index
+  )
+
+nutrients_all <- nutrients_all %>%
+  mutate(
+    profile_uid = paste(sample_year, profile_index, sep = "_"),
+    .after = profile_index
+  )
+
+# write out combined tables for EA
+write_csv(abiotic_all, "../data/abiotic_all.csv")
+write_csv(nutrients_all, "../data/nutrients_all.csv")
+
+```
+
