@@ -1,0 +1,125 @@
+---
+title: "00-what_do_we_have_here"
+output: html_document
+date: "2026-10-25"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Working with 2019 all the way through the next few blocks, subsequent years loaded to make the process easier once troubleshooting 2019 is complete.
+# Load and inspect- per DoE, metadata is embedded, so that has to come out and rejoin a usable table.
+```{r}
+#install.packages("ncdf4") if needed
+
+library(dplyr) #data format manipulation
+library(ncdf4) #read nc files (3 and 4 type)
+library(readr) #write out or read in tables
+library(tibble) #creating tables
+
+nc19 <- nc_open("data/raw/MarineWaterProfilesAndNutrientsYear2019.nc")
+nc20 <- nc_open("data/raw/MarineWaterProfilesAndNutrientsYear2020.nc")
+nc21 <- nc_open("data/raw/MarineWaterProfilesAndNutrientsYear2021.nc")
+nc22 <- nc_open("data/raw/MarineWaterProfilesAndNutrientsYear2022.nc")
+nc23 <- nc_open("data/raw/MarineWaterProfilesAndNutrientsYear2023.nc")
+nc24 <- nc_open("data/raw/MarineWaterProfilesAndNutrientsYear2024.nc")
+nc25 <- nc_open("data/raw/MarineWaterProfilesAndNutrientsYear2025.nc")
+
+#glimpse(nc19)
+
+```
+
+# Arrays, arrays, arrays and vectors - must turn into usable tables.
+```{r}
+
+# 1. Station-level metadata
+stations <- tibble(station_number = as.vector(ncvar_get(nc19, "station_number")), latitude = as.vector(ncvar_get(nc19, "Latitude")), longitude = as.vector(ncvar_get(nc19, "Longitude")))
+
+# 2. Profile-level metadata
+profiles <- tibble(profile_index = as.vector(ncvar_get(nc19, "profile_index")), station_number = as.vector(ncvar_get(nc19, "station_index")), field_date = as.Date(as.vector(ncvar_get(nc19, "FieldDate")), origin = "1970-01-01"))
+
+# 3. Observation-level measurements
+observations <- tibble(
+  profile_index = as.vector(ncvar_get(nc19, "obs_index")),
+  depth_m = as.vector(ncvar_get(nc19, "Depth")),
+
+  temperature = as.vector(ncvar_get(nc19, "Temp")),
+  salinity = as.vector(ncvar_get(nc19, "Salinity")),
+  dissolved_oxygen = as.vector(ncvar_get(nc19, "DOAdjusted")),
+
+  nitrate = as.vector(ncvar_get(nc19, "NO3")),
+  nitrite = as.vector(ncvar_get(nc19, "NO2")),
+  ammonium = as.vector(ncvar_get(nc19, "NH4")),
+  phosphate = as.vector(ncvar_get(nc19, "PO4")),
+  silicate = as.vector(ncvar_get(nc19, "SiOH4"))
+)
+
+# 4. Join measurements to profiles and stations
+water_quality19 <- observations %>%
+  left_join(
+    profiles,
+    by = "profile_index",
+    relationship = "many-to-one"
+  ) %>%
+  left_join(
+    stations,
+    by = "station_number",
+    relationship = "many-to-one"
+  )
+
+nc_close(nc19)
+
+# Verify resulting dataset
+glimpse(water_quality19)
+
+write_csv(water_quality19, "data/interim/water_quality19.csv")
+
+
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+# Filter any depths beyond where mussel ropes extend for anything that isn't a nutrient
+```{r}
+
+# Depth-appropriate abiotic measurements
+abiotic_rope19 <- water_quality19 %>%
+  filter(between(depth_m, 0, 13)) %>%
+  select(
+    profile_index,
+    station_number,
+    latitude,
+    longitude,
+    depth_m,
+    temperature,
+    salinity,
+    dissolved_oxygen
+  )
+
+# Nutrients at all sampled depths
+nutrients19 <- water_quality19 %>%
+  filter(
+    if_any(
+      c(nitrate, nitrite, ammonium, phosphate, silicate),
+      ~ !is.na(.x)
+    )
+  ) %>%
+  select(
+    profile_index,
+    station_number,
+    latitude,
+    longitude,
+    depth_m,
+    nitrate,
+    nitrite,
+    ammonium,
+    phosphate,
+    silicate
+  )
+
+write_csv(abiotic_rope19, "data/working/abiotic_rope_2019.csv")
+write_csv(nutrients19, "data/working/nutrients_2019.csv")
+
+```
+
