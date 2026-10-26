@@ -1,0 +1,579 @@
+---
+title: "Environmental Data Screening and Exploratory Analysis"
+subtitle: "Reusable source-level evaluation — Ecology marine water monitoring pilot"
+author: "Research workflow template"
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: true
+    code-tools: true
+    embed-resources: true
+execute:
+  warning: false
+  message: false
+  echo: true
+params:
+  source_id: "DOE_EIM_MarineWater_2019_2025"
+  source_label: "WA Ecology EIM Marine Water Profiles and Nutrients"
+  abiotic_file: "data/analysis/abiotic_all.csv"
+  nutrient_file: "data/analysis/nutrients_all.csv"
+  output_dir: "outputs/environmental_screening"
+  rope_min_m: 0
+  rope_max_m: 13
+  apply_qc: false
+  # Only specify QC-approved codes after reviewing the original source documentation.
+  accepted_qc_codes: [2]
+  # These are optional manual sentinels. NetCDF fill values may already be converted to NA.
+  missing_sentinels: [-99999.9]
+---
+
+# Purpose and decision rules
+
+This report is a **source-screening document**, not a physiological exposure model. Run it once per source (or logically related source family). Preserve raw files, provenance and original identifiers. Do not infer exposure relationships or merge agency datasets solely because site names resemble one another.
+
+**Stages:** inventory → structural validation → data quality → descriptive EDA → sampling coverage → depth/season/site characterization → suitability decision → undergraduate follow-up tasks. The current pilot uses two derived tables from the same Ecology NetCDF family. For datasets with other schemas, adapt the import/field mapping and reuse the later sections.
+
+**QC boundary:** The default `apply_qc: false` means all outputs are **provisional**. QC flags are not reliably included in earlier derived CSVs. Re-extract variable-specific QC codes from the source NetCDF files before treating outputs as quality-screened. Keep a record of rejected, censored and missing values; do not turn them into zeros. A flag value of `2` should be treated as acceptable only after verifying each variable's documentation and annual consistency.
+
+**Sampling units:** Depth observations are nested within profiles; profiles are nested within stations and time. Nutrients are discrete samples at selected depths. Never interpret the count of depth records as the count of independent profiles.
+
+# A. Setup, source registration and file checks
+
+```{r}
+#| label: setup
+library(tidyverse)
+library(lubridate)
+library(knitr)
+
+source_id <- params$source_id
+source_label <- params$source_label
+output_dir <- params$output_dir
+fig_dir <- file.path(output_dir, "figures")
+dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
+
+inputs <- c(abiotic = params$abiotic_file, nutrients = params$nutrient_file)
+missing_inputs <- inputs[!file.exists(inputs)]
+if (length(missing_inputs)) {
+  stop("Missing input(s): ", paste(missing_inputs, collapse = ", "),
+       ". Change paths in YAML params or render from the project root.")
+}
+
+# Keep a basic, auditable source registry; augment manually with agency details.
+source_registry <- tibble(
+  source_id = source_id,
+  source_label = source_label,
+  provider = "Washington Department of Ecology",
+  platform = "EIM",
+  source_family = "Marine water profiles and nutrients",
+  raw_format = "NetCDF (.nc)",
+  derived_files = paste(basename(inputs), collapse = "; "),
+  source_url = NA_character_,
+  download_date = NA_character_,
+  spatial_reference = "Station coordinates (validate datum/CRS)",
+  temporal_resolution = "Repeated sampling profiles",
+  vertical_reference = "Meters below surface (verify yearly metadata)",
+  units_verified = FALSE,
+  qc_reviewed = FALSE,
+  responsible_reviewer = NA_character_,
+  notes = "Pilot screening; complete registry fields from original metadata"
+)
+write_csv(source_registry, file.path(output_dir, "source_registry.csv"))
+source_registry %>% kable()
+```
+
+## A1. Read the two working tables
+
+```{r}
+#| label: import
+abiotic_raw <- read_csv(params$abiotic_file, show_col_types = FALSE)
+nutrient_raw <- read_csv(params$nutrient_file, show_col_types = FALSE)
+
+abiotic_vars <- c("temperature", "salinity", "dissolved_oxygen")
+nutrient_vars <- c("nitrate", "nitrite", "ammonium", "phosphate", "silicate")
+keys <- c("station_name", "profile_index", "depth_m", "field_date")
+
+check_columns <- function(data, expected, table_name) {
+  absent <- setdiff(expected, names(data))
+  if (length(absent)) stop(table_name, " missing columns: ", paste(absent, collapse = ", "))
+}
+check_columns(abiotic_raw, c(keys, abiotic_vars), "abiotic")
+check_columns(nutrient_raw, c(keys, nutrient_vars), "nutrients")
+
+# Preserve the imported tables untouched. Work on independently named copies.
+standardize <- function(df, value_names) {
+  df %>%
+    mutate(
+      field_date = as.Date(field_date),
+      sample_year = year(field_date),
+      month = month(field_date),
+      month_label = factor(month.abb[month], levels = month.abb),
+      station_name = as.character(station_name),
+      profile_index = as.character(profile_index),
+      # Include source and year so annual profile IDs do not collide.
+      profile_uid = paste(source_id, sample_year, profile_index, sep = "__"),
+      across(all_of(c("depth_m", value_names)), as.numeric)
+    )
+}
+abiotic <- standardize(abiotic_raw, abiotic_vars)
+nutrients <- standardize(nutrient_raw, nutrient_vars)
+
+# A date parse failure would produce a fabricated year of NA; don't continue silently.
+if (anyNA(abiotic$field_date) || anyNA(nutrients$field_date)) {
+  warning("Unparsed/missing dates exist: investigate before temporal summaries.")
+}
+
+tibble(table = c("abiotic", "nutrients"),
+       rows = c(nrow(abiotic), nrow(nutrients)),
+       stations = c(n_distinct(abiotic$station_name), n_distinct(nutrients$station_name)),
+       profiles = c(n_distinct(abiotic$profile_uid), n_distinct(nutrients$profile_uid))) %>% kable()
+```
+
+## A2. Identifier and duplication audit
+
+```{r}
+#| label: keys-audit
+# Repeated profile IDs across depth observations are EXPECTED.
+# Exact duplicated rows and conflicting station/profile assignments are not.
+key_audit <- function(x, table_name) {
+  tibble(
+    table = table_name,
+    exact_duplicate_rows = sum(duplicated(x)),
+    missing_station = sum(is.na(x$station_name) | x$station_name == ""),
+    missing_profile = sum(is.na(x$profile_index)),
+    missing_date = sum(is.na(x$field_date)),
+    missing_depth = sum(is.na(x$depth_m)),
+    negative_depth = sum(x$depth_m < 0, na.rm = TRUE),
+    profile_station_conflicts = x %>%
+      filter(!is.na(profile_uid), !is.na(station_name)) %>%
+      distinct(profile_uid, station_name) %>%
+      count(profile_uid) %>% filter(n > 1) %>% nrow()
+  )
+}
+keys_report <- bind_rows(key_audit(abiotic, "abiotic"),
+                         key_audit(nutrients, "nutrients"))
+write_csv(keys_report, file.path(output_dir, "identifier_audit.csv"))
+keys_report %>% kable()
+```
+
+# B. QC review and data integrity (pre-cleaning)
+
+Record actual raw variable names, physical units, source QC definitions, analytical detection/reporting limits, changes in methods, and known sensor corrections before applying QC. Do **not** remove observations based solely on a global IQR rule: real hypoxia, freshwater events, or contamination pulses may be scientifically important.
+
+## B1. Variable dictionary to complete
+
+```{r}
+#| label: dictionary
+variable_dictionary <- tibble(
+  variable = c(abiotic_vars, nutrient_vars),
+  source_variable = c("Temp", "Salinity", "DOAdjusted", "NO3", "NO2", "NH4", "PO4", "SiOH4"),
+  category = c(rep("abiotic sensor", 3), rep("discrete nutrient", 5)),
+  unit = c("degrees C", "PSU (source notation)", "mg/L", rep("VERIFY", 5)),
+  qc_field = NA_character_,
+  accepted_qc_definition = NA_character_,
+  reporting_limit = NA_real_,
+  measurement_method = NA_character_,
+  year_changes = NA_character_,
+  review_status = "Pending verification"
+)
+write_csv(variable_dictionary, file.path(output_dir, "variable_dictionary_TO_COMPLETE.csv"))
+variable_dictionary %>% kable()
+```
+
+## B2. Missing, sentinel, non-finite and negative value audit
+
+```{r}
+#| label: missingness
+# Do not mistake a physically plausible zero for missingness.
+# Use numeric sentinels for diagnostics only until metadata confirms their meaning.
+safe_stats <- function(x) {
+  x <- x[is.finite(x)]
+  if (!length(x)) return(tibble(n_valid = 0L, min = NA_real_, q25 = NA_real_,
+                                median = NA_real_, mean = NA_real_, q75 = NA_real_,
+                                max = NA_real_, sd = NA_real_))
+  tibble(n_valid = length(x), min = min(x), q25 = unname(quantile(x, .25)),
+         median = median(x), mean = mean(x), q75 = unname(quantile(x, .75)),
+         max = max(x), sd = if (length(x) > 1) sd(x) else NA_real_)
+}
+
+variable_audit <- function(df, vars, table_name) {
+  df %>%
+    select(sample_year, all_of(vars)) %>%
+    pivot_longer(all_of(vars), names_to = "variable", values_to = "value") %>%
+    group_by(sample_year, variable) %>%
+    group_modify(~ {
+      z <- .x$value
+      bind_cols(
+        tibble(n_records = length(z),
+               n_missing_na = sum(is.na(z)),
+               n_nonfinite = sum(!is.finite(z)),
+               n_sentinel = sum(!is.na(z) & z %in% params$missing_sentinels),
+               n_negative = sum(z < 0, na.rm = TRUE),
+               pct_nonfinite = round(mean(!is.finite(z)) * 100, 2)),
+        safe_stats(replace(z, !is.na(z) & z %in% params$missing_sentinels, NA_real_))
+      )
+    }) %>% ungroup() %>% mutate(table = table_name, .before = 1)
+}
+qa_audit <- bind_rows(variable_audit(abiotic, abiotic_vars, "abiotic"),
+                      variable_audit(nutrients, nutrient_vars, "nutrients"))
+write_csv(qa_audit, file.path(output_dir, "variable_year_quality_and_stats.csv"))
+qa_audit %>% kable(digits = 2)
+```
+
+### Missingness heatmap
+
+```{r}
+#| label: missing-figure
+#| fig-width: 10
+#| fig-height: 5
+p_missing <- qa_audit %>%
+  ggplot(aes(x = factor(sample_year), y = variable, fill = pct_nonfinite)) +
+  geom_tile(color = "white") +
+  facet_wrap(~ table, scales = "free_y", ncol = 1) +
+  scale_fill_viridis_c(name = "% missing", na.value = "grey90") +
+  labs(title = "Missing or non-finite observations by variable and year",
+       x = "Year", y = NULL) + theme_minimal()
+print(p_missing)
+ggsave(file.path(fig_dir, "missingness_by_year.png"), p_missing, width = 10, height = 6, dpi = 200)
+```
+
+## B3. QC status and cleaning gate
+
+QC flags must be linked **per observation and variable**, not applied as one blanket filter to all columns. If earlier CSV extraction omitted QC columns, return to NetCDF, extract QC companions and source-defined qualifier fields, and document join keys. Maintain raw and QC-screened versions.
+
+```{r}
+#| label: qc-gate
+# QC filter is intentionally disabled unless EVERY target variable has a
+# documented, matching <variable>_qc column in its table.
+apply_variable_qc <- function(df, vars, approved_codes) {
+  needed <- paste0(vars, "_qc")
+  check_columns(df, needed, "QC application")
+  for (i in seq_along(vars)) {
+    value_var <- vars[i]; qc_var <- needed[i]
+    df[[value_var]][!is.na(df[[qc_var]]) & !(df[[qc_var]] %in% approved_codes)] <- NA_real_
+    # Missing QC status stays unresolved rather than implicitly passing.
+    df[[value_var]][is.na(df[[qc_var]])] <- NA_real_
+  }
+  df
+}
+
+if (isTRUE(params$apply_qc)) {
+  # Only enable after confirming each variable's accepted values are correct.
+  abiotic_qc <- apply_variable_qc(abiotic, abiotic_vars, params$accepted_qc_codes)
+  nutrients_qc <- apply_variable_qc(nutrients, nutrient_vars, params$accepted_qc_codes)
+  qc_label <- "QC-screened (source definitions verified by analyst)"
+} else {
+  abiotic_qc <- abiotic
+  nutrients_qc <- nutrients
+  qc_label <- "PROVISIONAL: original QC flags not applied"
+}
+cat("**Report QC status:**", qc_label, "\n")
+```
+
+# C. Distributions (provisional until QC is completed)
+
+```{r}
+#| label: distribution-function
+plot_variable_histograms <- function(df, vars, label) {
+  df %>%
+    select(all_of(vars)) %>%
+    pivot_longer(everything(), names_to = "variable", values_to = "value") %>%
+    filter(is.finite(value), !(value %in% params$missing_sentinels)) %>%
+    ggplot(aes(value)) +
+    geom_histogram(bins = 40, fill = "#0072B2", color = "white") +
+    facet_wrap(~ variable, scales = "free", ncol = 2) +
+    labs(title = paste(label, "measurement distributions"),
+         subtitle = qc_label, x = "Value (units differ by variable)",
+         y = "Observation count") +
+    theme_minimal()
+}
+```
+
+```{r}
+#| label: histogram-abiotic
+#| fig-width: 10
+#| fig-height: 6
+p_abiotic_hist <- plot_variable_histograms(abiotic_qc, abiotic_vars, "Abiotic")
+print(p_abiotic_hist)
+ggsave(file.path(fig_dir, "abiotic_histograms.png"), p_abiotic_hist, width = 10, height = 6, dpi = 200)
+```
+
+```{r}
+#| label: histogram-nutrients
+#| fig-width: 10
+#| fig-height: 8
+p_nutrient_hist <- plot_variable_histograms(nutrients_qc, nutrient_vars, "Nutrient")
+print(p_nutrient_hist)
+ggsave(file.path(fig_dir, "nutrient_histograms.png"), p_nutrient_hist, width = 10, height = 8, dpi = 200)
+```
+
+**Review prompts:** Are there spikes at zero, nonphysical negatives, sensor saturation, implausible units, heavy right tails, or year-specific distribution shifts? Flag suspicious values for follow-up; do not delete values without a documented rule. In particular, `nutrients_all` includes only rows with at least one observed nutrient, so its missingness percentages are conditional on that selection.
+
+# D. Sampling coverage (before comparing concentrations)
+
+## D1. Abiotic profile counts by station and year
+
+```{r}
+#| label: sampling-coverage
+# A profile counts once, regardless of how many depth-bin observations it contains.
+abiotic_coverage <- abiotic_qc %>%
+  filter(!is.na(station_name), !is.na(profile_uid)) %>%
+  group_by(station_name, sample_year) %>%
+  summarise(n_profiles = n_distinct(profile_uid),
+            n_months_sampled = n_distinct(month, na.rm = TRUE),
+            n_depth_records = n(), .groups = "drop")
+write_csv(abiotic_coverage, file.path(output_dir, "abiotic_station_year_coverage.csv"))
+
+p_coverage <- ggplot(abiotic_coverage,
+                    aes(factor(sample_year), fct_rev(station_name), fill = n_profiles)) +
+  geom_tile(color = "white") +
+  scale_fill_viridis_c(name = "Profiles") +
+  labs(title = "Number of distinct abiotic profiles", x = "Year", y = "Station") +
+  theme_minimal()
+print(p_coverage)
+ggsave(file.path(fig_dir, "abiotic_station_year_effort.png"),
+       p_coverage, width = 10, height = 12, dpi = 200)
+
+# Separate month-level profile coverage is more informative than a total alone.
+abiotic_month_coverage <- abiotic_qc %>%
+  group_by(station_name, sample_year, month) %>%
+  summarise(n_profiles = n_distinct(profile_uid), .groups = "drop")
+write_csv(abiotic_month_coverage, file.path(output_dir, "abiotic_station_year_month_coverage.csv"))
+```
+
+## D2. Nutrient sampling counts and depths
+
+```{r}
+#| label: nutrient-coverage
+nutrient_long <- nutrients_qc %>%
+  pivot_longer(all_of(nutrient_vars), names_to = "variable", values_to = "value")
+nutrient_coverage <- nutrient_long %>%
+  group_by(station_name, sample_year, variable) %>%
+  summarise(n_valid_samples = sum(is.finite(value) &
+                                   !(value %in% params$missing_sentinels)),
+            n_profiles_with_measurement = n_distinct(profile_uid[
+              is.finite(value) & !(value %in% params$missing_sentinels)]),
+            .groups = "drop")
+write_csv(nutrient_coverage, file.path(output_dir, "nutrient_station_year_coverage.csv"))
+
+p_depth <- nutrient_long %>%
+  filter(is.finite(value)) %>%
+  distinct(sample_year, station_name, profile_uid, depth_m, variable) %>%
+  ggplot(aes(depth_m)) + geom_histogram(binwidth = 1, fill = "#009E73", color = "white") +
+  facet_wrap(~ sample_year, scales = "free_y") +
+  labs(title = "Nutrient measurement depths (variable-specific records)",
+       x = "Depth below surface (m)", y = "Count") + theme_minimal()
+print(p_depth)
+ggsave(file.path(fig_dir, "nutrient_sampling_depths.png"), p_depth,
+       width = 11, height = 6, dpi = 200)
+```
+
+# E. Post-QC environmental patterns
+
+**Interpretive gate:** The following tables and plots can be generated before QC to test code, but must be labeled provisional until source quality flags, unit consistency, and sampling coverage have been assessed. Do not use the outputs as validated exposure covariates while `apply_qc: false`.
+
+## E1. Abiotic profile-level summaries: 0–13 m
+
+```{r}
+#| label: profile-summary
+valid_mean <- function(x) {
+  x <- x[is.finite(x) & !(x %in% params$missing_sentinels)]
+  if (!length(x)) NA_real_ else mean(x)
+}
+valid_min <- function(x) {
+  x <- x[is.finite(x) & !(x %in% params$missing_sentinels)]
+  if (!length(x)) NA_real_ else min(x)
+}
+valid_max <- function(x) {
+  x <- x[is.finite(x) & !(x %in% params$missing_sentinels)]
+  if (!length(x)) NA_real_ else max(x)
+}
+
+abiotic_rope <- abiotic_qc %>%
+  filter(between(depth_m, params$rope_min_m, params$rope_max_m))
+
+abiotic_profile <- abiotic_rope %>%
+  group_by(station_name, profile_uid) %>%
+  summarise(
+    field_date = first(field_date),
+    sample_year = first(sample_year), month = first(month),
+    shallowest_m = valid_min(depth_m), deepest_m = valid_max(depth_m),
+    n_depth_bins = n_distinct(depth_m),
+    n_temp = sum(is.finite(temperature)),
+    n_salinity = sum(is.finite(salinity)),
+    n_do = sum(is.finite(dissolved_oxygen)),
+    temperature_mean = valid_mean(temperature),
+    temperature_range = if (sum(is.finite(temperature)) > 0)
+      valid_max(temperature) - valid_min(temperature) else NA_real_,
+    salinity_mean = valid_mean(salinity),
+    do_mean = valid_mean(dissolved_oxygen),
+    do_min = valid_min(dissolved_oxygen),
+    .groups = "drop"
+  ) %>%
+  mutate(reaches_10m = deepest_m >= 10,
+         reaches_12m = deepest_m >= 12,
+         qc_status = qc_label)
+write_csv(abiotic_profile, file.path(output_dir, "abiotic_profile_summaries.csv"))
+```
+
+**Caution:** A profile reaching 12 m is not automatically well represented at every intermediate depth. Inspect number and spacing of bins and missingness per variable; profile means from incomplete sections of the rope can be biased. Depth-bin statistics are exploratory until coverage rules are set.
+
+## E2. Monthly seasonality (profile means, not individual depth records)
+
+```{r}
+#| label: monthly-plot
+#| fig-width: 10
+#| fig-height: 6
+profile_long <- abiotic_profile %>%
+  select(station_name, sample_year, month, profile_uid,
+         temperature_mean, salinity_mean, do_mean) %>%
+  pivot_longer(c(temperature_mean, salinity_mean, do_mean),
+               names_to = "variable", values_to = "profile_mean") %>%
+  filter(is.finite(profile_mean))
+
+p_month <- ggplot(profile_long,
+                  aes(factor(month, levels = 1:12, labels = month.abb), profile_mean)) +
+  geom_boxplot(fill = "#56B4E9", outlier.alpha = .2) +
+  facet_wrap(~ variable, scales = "free_y", ncol = 1) +
+  labs(title = "Seasonal distributions of profile means (pooled stations)",
+       subtitle = paste("0–13 m;", qc_label), x = "Month", y = "Profile mean") +
+  theme_minimal()
+print(p_month)
+ggsave(file.path(fig_dir, "monthly_profile_boxplots.png"), p_month,
+       width = 10, height = 8, dpi = 200)
+```
+
+## E3. Depth strata: vertical exposure structure
+
+```{r}
+#| label: depth-binning
+# Bounds: [0,2], (2,5], (5,9], (9,13]. This is a candidate scheme, not a biological fact.
+abiotic_depth <- abiotic_rope %>%
+  mutate(depth_bin = cut(depth_m, breaks = c(0, 2, 5, 9, 13),
+                         labels = c("0–2 m", "2–5 m", "5–9 m", "9–13 m"),
+                         right = TRUE, include.lowest = TRUE))
+
+abiotic_profile_depth <- abiotic_depth %>%
+  filter(!is.na(depth_bin)) %>%
+  group_by(station_name, profile_uid, sample_year, month, depth_bin) %>%
+  summarise(
+    n_depth_bins = n_distinct(depth_m),
+    temp_mean = valid_mean(temperature),
+    salinity_mean = valid_mean(salinity),
+    do_mean = valid_mean(dissolved_oxygen),
+    do_min = valid_min(dissolved_oxygen),
+    .groups = "drop"
+  )
+write_csv(abiotic_profile_depth, file.path(output_dir, "abiotic_profile_depth_bin.csv"))
+
+monthly_depth <- abiotic_profile_depth %>%
+  group_by(month, depth_bin) %>%
+  summarise(median_temp = if (any(is.finite(temp_mean)))
+              median(temp_mean[is.finite(temp_mean)]) else NA_real_,
+            n_profiles = sum(is.finite(temp_mean)), .groups = "drop")
+
+p_depth_month <- ggplot(monthly_depth,
+                        aes(factor(month, levels = 1:12, labels = month.abb),
+                            depth_bin, fill = median_temp)) +
+  geom_tile(color = "white") + scale_fill_viridis_c(na.value = "grey90", name = "°C") +
+  labs(title = "Seasonal temperature by depth stratum",
+       subtitle = paste("Median of profile-bin means;", qc_label),
+       x = "Month", y = "Depth bin") + theme_minimal()
+print(p_depth_month)
+ggsave(file.path(fig_dir, "depth_bin_month_temperature.png"), p_depth_month,
+       width = 10, height = 5, dpi = 200)
+```
+
+## E4. Nutrient seasonality: retain discrete sample depths
+
+```{r}
+#| label: nutrient-monthly
+nutrient_monthly <- nutrient_long %>%
+  filter(is.finite(value), !(value %in% params$missing_sentinels)) %>%
+  group_by(station_name, sample_year, month, variable) %>%
+  summarise(n_samples = n(), n_profiles = n_distinct(profile_uid),
+            median_value = median(value),
+            q25 = unname(quantile(value, .25)),
+            q75 = unname(quantile(value, .75)),
+            .groups = "drop")
+write_csv(nutrient_monthly, file.path(output_dir, "nutrient_monthly_descriptive.csv"))
+
+p_nutrient_month <- nutrient_long %>%
+  filter(is.finite(value), !(value %in% params$missing_sentinels)) %>%
+  ggplot(aes(factor(month, levels = 1:12, labels = month.abb), value)) +
+  geom_boxplot(outlier.alpha = 0.2, fill = "#009E73") +
+  facet_wrap(~ variable, scales = "free_y") +
+  labs(title = "Monthly nutrient concentrations — sample-level, all depths",
+       subtitle = qc_label, x = "Month", y = "Concentration (verify units)") +
+  theme_minimal()
+print(p_nutrient_month)
+ggsave(file.path(fig_dir, "monthly_nutrient_boxplots.png"), p_nutrient_month,
+       width = 11, height = 7, dpi = 200)
+```
+
+# F. Screening decision and handoff
+
+**Do not collapse sources into an integrated environmental profile yet.** First decide whether each source supports (1) regional environmental characterization, (2) station-specific characterization, and/or (3) linkage to existing mussel records. These are separate suitability decisions.
+
+```{r}
+#| label: decision-templates
+screening_decision <- tibble(
+  source_id = source_id,
+  data_family = c("abiotic", "nutrients"),
+  qc_complete = FALSE,
+  units_harmonized = FALSE,
+  methods_comparable_across_years = NA,
+  station_crosswalk_available = NA,
+  spatial_coverage_assessed = FALSE,
+  seasonal_coverage_assessed = FALSE,
+  depth_compatibility_assessed = FALSE,
+  regional_characterization = "pending",
+  station_level_characterization = "pending",
+  direct_mussel_linkage = "pending",
+  decision_rationale = NA_character_,
+  reviewer = NA_character_,
+  review_date = NA_character_
+)
+write_csv(screening_decision, file.path(output_dir, "inclusion_decision_TO_COMPLETE.csv"))
+
+undergrad_followup <- tibble(
+  task_id = paste0("T", sprintf("%02d", 1:7)),
+  task = c(
+    "Locate and archive original annual source documentation and stable download links",
+    "Verify variable units, methods, QC flags and changes across years",
+    "Re-extract QC codes and qualifiers into year-level data tables",
+    "Investigate suspect negatives, sentinels and duplicate identifiers",
+    "Evaluate station/season/depth gaps and profile completeness",
+    "Join station identifier crosswalk with provenance and ambiguous matches flagged",
+    "Write a short suitability assessment for each intended application"
+  ),
+  status = "not started",
+  evidence_link = NA_character_,
+  notes = NA_character_
+)
+write_csv(undergrad_followup, file.path(output_dir, "undergrad_followup_tasks.csv"))
+```
+
+## F1. Analyst completion checklist
+
+- [ ] Source URL, retrieval date, version, spatial reference and methods recorded.
+- [ ] Original data preserved without destructive alterations.
+- [ ] Station identifiers resolved; station coordinates and positional uncertainty reviewed.
+- [ ] All relevant QC variables and codes interpreted using source documentation.
+- [ ] Sentinels, missing values and censored results distinguished.
+- [ ] Measurement units reconciled across annual files and across agencies.
+- [ ] Duplicate and profile/station identifier anomalies checked.
+- [ ] Temporal and seasonal sampling effort described; years with method changes flagged.
+- [ ] Sampling depth and rope-relevant depth coverage evaluated independently.
+- [ ] Histograms, descriptive tables and sampling-effort plots reviewed and annotated.
+- [ ] Inclusion decisions recorded separately for regional, station and mussel-linked work.
+- [ ] Known limitations and follow-up tasks documented for future researchers.
+
+## F2. Expansion to 30+ other source files
+
+For each new data source, **copy and rename this QMD** or parameterize its input stage; do not force different observation structures into the Ecology schema without a mapping step. The following columns provide a stable conceptual interface across sources: `source_id`, `provider`, `station_id`, `timestamp`, `latitude`, `longitude`, `depth_m` (if applicable), `variable`, `value`, `unit`, `quality_flag`, `method`, and `original_record_id`. Retain agency-specific fields in supplemental tables rather than discarding them.
+
+A robust central **source inventory** should hold one row per source/version; the **variable dictionary** should hold one row per variable/measurement method; and an **inclusion decision** should exist per source *and intended use*. The station-code crosswalk is a separate, version-controlled table with explicit match confidence and provenance.
+
+For undergraduate handoff, a practical initial deliverable for every source is: (i) completed registry, (ii) metadata and QC interpretation, (iii) missingness/coverage figures, (iv) descriptive plots, (v) one-page suitability memo, and (vi) unresolved questions with links to evidence.
