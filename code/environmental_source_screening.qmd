@@ -13,13 +13,13 @@ format:
 execute:
   warning: false
   message: false
-  echo: true
+  echo: false
 params:
   source_id: "DOE_EIM_MarineWater_2019_2025"
   source_label: "WA Ecology EIM Marine Water Profiles and Nutrients"
-  abiotic_file: "data/analysis/abiotic_all.csv"
-  nutrient_file: "data/analysis/nutrients_all.csv"
-  output_dir: "outputs/environmental_screening"
+  abiotic_file: "../data/working/abiotic_all.csv"
+  nutrient_file: "../data/working/nutrients_all.csv"
+  output_dir: "../outputs/environmental_screening"
   rope_min_m: 0
   rope_max_m: 13
   apply_qc: false
@@ -43,9 +43,10 @@ This report is a **source-screening document**, not a physiological exposure mod
 
 ```{r}
 #| label: setup
-library(tidyverse)
-library(lubridate)
+
 library(knitr)
+library(lubridate)
+library(tidyverse)
 
 source_id <- params$source_id
 source_label <- params$source_label
@@ -360,7 +361,7 @@ write_csv(nutrient_coverage, file.path(output_dir, "nutrient_station_year_covera
 p_depth <- nutrient_long %>%
   filter(is.finite(value)) %>%
   distinct(sample_year, station_name, profile_uid, depth_m, variable) %>%
-  ggplot(aes(depth_m)) + geom_histogram(binwidth = 1, fill = "#009E73", color = "white") +
+  ggplot(aes(depth_m)) + geom_histogram(binwidth = 1, fill = "#0072B2", color = "grey") +
   facet_wrap(~ sample_year, scales = "free_y") +
   labs(title = "Nutrient measurement depths (variable-specific records)",
        x = "Depth below surface (m)", y = "Count") + theme_minimal()

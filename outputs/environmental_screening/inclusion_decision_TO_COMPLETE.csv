@@ -1,0 +1,3 @@
+source_id,data_family,qc_complete,units_harmonized,methods_comparable_across_years,station_crosswalk_available,spatial_coverage_assessed,seasonal_coverage_assessed,depth_compatibility_assessed,regional_characterization,station_level_characterization,direct_mussel_linkage,decision_rationale,reviewer,review_date
+DOE_EIM_MarineWater_2019_2025,abiotic,FALSE,FALSE,NA,NA,FALSE,FALSE,FALSE,pending,pending,pending,NA,NA,NA
+DOE_EIM_MarineWater_2019_2025,nutrients,FALSE,FALSE,NA,NA,FALSE,FALSE,FALSE,pending,pending,pending,NA,NA,NA

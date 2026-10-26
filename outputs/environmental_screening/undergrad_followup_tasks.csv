@@ -1,0 +1,8 @@
+task_id,task,status,evidence_link,notes
+T01,Locate and archive original annual source documentation and stable download links,not started,NA,NA
+T02,"Verify variable units, methods, QC flags and changes across years",not started,NA,NA
+T03,Re-extract QC codes and qualifiers into year-level data tables,not started,NA,NA
+T04,"Investigate suspect negatives, sentinels and duplicate identifiers",not started,NA,NA
+T05,Evaluate station/season/depth gaps and profile completeness,not started,NA,NA
+T06,Join station identifier crosswalk with provenance and ambiguous matches flagged,not started,NA,NA
+T07,Write a short suitability assessment for each intended application,not started,NA,NA

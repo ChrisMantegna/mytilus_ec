@@ -1,0 +1,9 @@
+variable,source_variable,category,unit,qc_field,accepted_qc_definition,reporting_limit,measurement_method,year_changes,review_status
+temperature,Temp,abiotic sensor,degrees C,NA,NA,NA,NA,NA,Pending verification
+salinity,Salinity,abiotic sensor,PSU (source notation),NA,NA,NA,NA,NA,Pending verification
+dissolved_oxygen,DOAdjusted,abiotic sensor,mg/L,NA,NA,NA,NA,NA,Pending verification
+nitrate,NO3,discrete nutrient,VERIFY,NA,NA,NA,NA,NA,Pending verification
+nitrite,NO2,discrete nutrient,VERIFY,NA,NA,NA,NA,NA,Pending verification
+ammonium,NH4,discrete nutrient,VERIFY,NA,NA,NA,NA,NA,Pending verification
+phosphate,PO4,discrete nutrient,VERIFY,NA,NA,NA,NA,NA,Pending verification
+silicate,SiOH4,discrete nutrient,VERIFY,NA,NA,NA,NA,NA,Pending verification
