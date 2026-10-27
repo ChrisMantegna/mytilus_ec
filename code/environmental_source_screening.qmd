@@ -1,7 +1,7 @@
 ---
 title: "Environmental Data Screening and Exploratory Analysis"
-subtitle: "Reusable source-level evaluation — Ecology marine water monitoring pilot"
-author: "Research workflow template"
+subtitle: "Exploring publicly available water quality and nutrient profiles at 40 sites in Puget Sound"
+author: "Chris Mantegna"
 date: today
 format:
   html:
@@ -31,13 +31,13 @@ params:
 
 # Purpose and decision rules
 
-This report is a **source-screening document**, not a physiological exposure model. Run it once per source (or logically related source family). Preserve raw files, provenance and original identifiers. Do not infer exposure relationships or merge agency datasets solely because site names resemble one another.
+This report is a **source-screening document** only. The purpose is to review and assess publicly available data, gathered by local and regional agencies, to support future assessments of *Mytilus trossulus*' response to environmental conditions. The data in this report was taken from the WA Department of Ecology (DoE)
 
-**Stages:** inventory → structural validation → data quality → descriptive EDA → sampling coverage → depth/season/site characterization → suitability decision → undergraduate follow-up tasks. The current pilot uses two derived tables from the same Ecology NetCDF family. For datasets with other schemas, adapt the import/field mapping and reuse the later sections.
+**Stages:** inventory → structural validation → data quality → descriptive EDA → sampling coverage → depth/season/site characterization → suitability decision. The current pilot uses two derived tables from the same DoE NetCDF file groups. 
 
-**QC boundary:** The default `apply_qc: false` means all outputs are **provisional**. QC flags are not reliably included in earlier derived CSVs. Re-extract variable-specific QC codes from the source NetCDF files before treating outputs as quality-screened. Keep a record of rejected, censored and missing values; do not turn them into zeros. A flag value of `2` should be treated as acceptable only after verifying each variable's documentation and annual consistency.
+**QC boundary:** The default `apply_qc: false` means all outputs are *provisional*. All posted data is QC'd by DoE, therefore the QC flags are only for my future intended use.
 
-**Sampling units:** Depth observations are nested within profiles; profiles are nested within stations and time. Nutrients are discrete samples at selected depths. Never interpret the count of depth records as the count of independent profiles.
+**Sampling units:** Depth observations are nested within profiles; profiles are nested within stations and time. Nutrients are discrete samples at selected depths. The units of measurement/ reporting are in a separate document outlining DoE's data submission and integrity policies.
 
 # A. Setup, source registration and file checks
 
@@ -159,10 +159,8 @@ keys_report %>% kable()
 ```
 
 # B. QC review and data integrity (pre-cleaning)
-
-Record actual raw variable names, physical units, source QC definitions, analytical detection/reporting limits, changes in methods, and known sensor corrections before applying QC. Do **not** remove observations based solely on a global IQR rule: real hypoxia, freshwater events, or contamination pulses may be scientifically important.
-
 ## B1. Variable dictionary to complete
+The DoE website documents nutrients in ug/L but this is unverified at this time.
 
 ```{r}
 #| label: dictionary
@@ -183,6 +181,8 @@ variable_dictionary %>% kable()
 ```
 
 ## B2. Missing, sentinel, non-finite and negative value audit
+### Note: nutrients are sampled at specific depths and cycles rather than at every depth and repeatedly throughout the year - 'missing' records does not mean missing in the same way that the water quality parameters are missing.
+Sentinel values are those like -999 that represent a missing, invalid, or measurement tool limitation. Non-finite are values like NA, and require further review to confirm, and negative values may or may not be valid based on the measurement category, so it is flagged for review.
 
 ```{r}
 #| label: missingness
@@ -222,7 +222,7 @@ write_csv(qa_audit, file.path(output_dir, "variable_year_quality_and_stats.csv")
 qa_audit %>% kable(digits = 2)
 ```
 
-### Missingness heatmap
+### Missing(ness) heatmap
 
 ```{r}
 #| label: missing-figure
@@ -236,12 +236,12 @@ p_missing <- qa_audit %>%
   labs(title = "Missing or non-finite observations by variable and year",
        x = "Year", y = NULL) + theme_minimal()
 print(p_missing)
-ggsave(file.path(fig_dir, "missingness_by_year.png"), p_missing, width = 10, height = 6, dpi = 200)
+ggsave(file.path(fig_dir, "missing_by_year.png"), p_missing, width = 10, height = 6, dpi = 200)
 ```
 
-## B3. QC status and cleaning gate
+## B3. QC status and data cleaning
 
-QC flags must be linked **per observation and variable**, not applied as one blanket filter to all columns. If earlier CSV extraction omitted QC columns, return to NetCDF, extract QC companions and source-defined qualifier fields, and document join keys. Maintain raw and QC-screened versions.
+QC status for this project has not been defined. As stated earlier, all data hosted on DoE's sites has been QC'd or is indicated otherwise in the study description.
 
 ```{r}
 #| label: qc-gate
@@ -267,12 +267,12 @@ if (isTRUE(params$apply_qc)) {
 } else {
   abiotic_qc <- abiotic
   nutrients_qc <- nutrients
-  qc_label <- "PROVISIONAL: original QC flags not applied"
+  #qc_label <- "PROVISIONAL: original QC flags not applied"
 }
-cat("**Report QC status:**", qc_label, "\n")
+#cat("**Report QC status:**", qc_label, "\n")
 ```
 
-# C. Distributions (provisional until QC is completed)
+# C. Distributions (raw data)
 
 ```{r}
 #| label: distribution-function
@@ -309,7 +309,7 @@ print(p_nutrient_hist)
 ggsave(file.path(fig_dir, "nutrient_histograms.png"), p_nutrient_hist, width = 10, height = 8, dpi = 200)
 ```
 
-**Review prompts:** Are there spikes at zero, nonphysical negatives, sensor saturation, implausible units, heavy right tails, or year-specific distribution shifts? Flag suspicious values for follow-up; do not delete values without a documented rule. In particular, `nutrients_all` includes only rows with at least one observed nutrient, so its missingness percentages are conditional on that selection.
+**Reminder:** Data, in particular, `nutrients_all` includes only rows with at least one observed nutrient, so its missing-ness percentages are conditional on that selection.
 
 # D. Sampling coverage (before comparing concentrations)
 
