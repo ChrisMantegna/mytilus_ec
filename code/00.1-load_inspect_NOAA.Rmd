@@ -1,0 +1,40 @@
+---
+title: "00.1-load_inspect_NOAA"
+output: html_document
+date: "2026-10-27"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Load and inspect data from X to 2008
+```{r}
+#add block purpose and ECHO parameters to each chunk
+
+library(data.table)
+library(dplyr) #data format manipulation
+library(janitor)
+library(ncdf4) #read nc files (3 and 4 type)
+library(purrr) #avoiding loops to extract data from vectors and then build abiotic/ nutrients tables
+library(readr) #write out or read in tables
+library(stringr) #similar to purrr, really great for name/ characteristic changes
+library(tibble) #creating tables
+library(tidyr)
+
+
+# Run from the mytilus_ec project root
+file_path <- "../data/raw/nccos_chem_data.txt"
+
+stopifnot(file.exists(file_path))
+
+# Inspect the file before parsing
+file.info(file_path)$size / 1024^2
+
+# First 12 lines
+readLines(file_path, n = 12, warn = FALSE)
+
+
+#glimpse(ncXX)
+
+```
