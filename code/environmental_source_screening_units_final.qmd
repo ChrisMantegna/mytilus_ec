@@ -31,11 +31,11 @@ params:
 
 # Purpose and decision rules
 
-This report is a **source-screening document** only. The purpose is to review and assess publicly available data, gathered by local and regional agencies, to support future assessments of *Mytilus trossulus*' response to environmental conditions. The data in this report was taken from the WA Department of Ecology (DoE)
+This report is a **source-screening document** only. The purpose is to review and assess publicly available data, gathered by local and regional agencies, to support future assessments of *Mytilus trossulus*' response to environmental conditions. The data in this report was taken from the WA Department of Ecology (DoE). All raw data was reformatted from its original embedded vector format by manipulation into tables and combined across years and type prior to this process.
 
-**Stages:** inventory → structural validation → data quality → descriptive EDA → sampling coverage → depth/season/site characterization → suitability decision. The current pilot uses two derived tables from the same DoE NetCDF file groups. 
+**Stages:** inventory → structural validation → data quality → descriptive EDA → sampling coverage → depth/season/site characterization → suitability decision. The current pilot uses two derived tables from the same DoE NetCDF file groups.
 
-**QC boundary:** The default `apply_qc: false` means all outputs are *provisional*. All posted data is QC'd by DoE, therefore the QC flags are only for my future intended use.
+**QC limit:** The default `apply_qc: false` means all outputs are *provisional*. All posted data is QC'd by DoE, therefore the QC flags are only for my future intended use.
 
 **Sampling units:** Depth observations are nested within profiles; profiles are nested within stations and time. Nutrients are discrete samples at selected depths. The source webpage lists units for profile parameters and all five discrete nutrients (including phosphate at µM); correspondence between the webpage and the extracted NetCDF variables still requires confirmation.
 
@@ -159,8 +159,10 @@ keys_report %>% kable()
 ```
 
 # B. QC review and data integrity (pre-cleaning)
-## B1. Variable dictionary to complete
-The Ecology marine-water data webpage lists nitrate, nitrite, ammonium, phosphate, and silicate in micromolar (µM), not µg/L. The phosphate unit was confirmed by the user from the portion of the webpage outside the screenshot. Units below are documented webpage units, pending verification against individual NetCDF variable attributes and any year-specific differences. No numeric unit conversion is performed.
+
+## B1. Variable dictionary
+
+The Ecology marine-water data webpage lists nitrate, nitrite, ammonium, phosphate, and silicate in micromolar (µM), not µg/L. Units below are documented from the [DoE webpage](https://ecology.wa.gov/research-data/monitoring-assessment/puget-sound-and-marine-monitoring), pending verification against individual NetCDF variable attributes and any year-specific differences. No numeric unit conversion is performed.
 
 ```{r}
 #| label: dictionary
@@ -194,8 +196,10 @@ facet_variable_labels <- function(x) {
 ```
 
 ## B2. Missing, sentinel, non-finite and negative value audit
-### Note: nutrients are sampled at specific depths and cycles rather than at every depth and repeatedly throughout the year - 'missing' records does not mean missing in the same way that the water quality parameters are missing.
-Sentinel values are those like -999 that represent a missing, invalid, or measurement tool limitation. Non-finite are values like NA, and require further review to confirm, and negative values may or may not be valid based on the measurement category, so it is flagged for review.
+
+*Note:* nutrients are sampled at specific depths and cycles rather than at all depths and repeatedly throughout each month of the year - 'missing' records does not mean missing in the same way that the water quality parameters are missing.
+
+Sentinel values are those (like -999) that represent a missing, invalid, or measurement tool limitation. Non-finite are values (like NA) that require further review to confirm, and negative values may or may not be valid based on the measurement category, so it is flagged for review.
 
 ```{r}
 #| label: missingness
@@ -254,7 +258,7 @@ ggsave(file.path(fig_dir, "missing_by_year.png"), p_missing, width = 10, height 
 
 ## B3. QC status and data cleaning
 
-QC status for this project has not been defined. As stated earlier, all data hosted on DoE's sites has been QC'd or is indicated otherwise in the study description.
+QC parameters for this project has not been defined, so this is a placeholder for the larger workflow. As stated earlier, all data hosted on DoE's sites have been QC'd or is indicated otherwise in the study description.
 
 ```{r}
 #| label: qc-gate
@@ -329,7 +333,7 @@ ggsave(file.path(fig_dir, "nutrient_histograms.png"), p_nutrient_hist, width = 1
 
 **Reminder:** Data, in particular, `nutrients_all` includes only rows with at least one observed nutrient, so its missing-ness percentages are conditional on that selection.
 
-# D. Sampling coverage (before comparing concentrations)
+# D. Sampling coverage (before comparison)
 
 ## D1. Abiotic profile counts by station and year
 
@@ -379,7 +383,7 @@ write_csv(nutrient_coverage, file.path(output_dir, "nutrient_station_year_covera
 p_depth <- nutrient_long %>%
   filter(is.finite(value), !(value %in% params$missing_sentinels)) %>%
   distinct(sample_year, station_name, profile_uid, depth_m, variable) %>%
-  ggplot(aes(depth_m)) + geom_histogram(binwidth = 1, fill = "#0072B2", color = "grey") +
+  ggplot(aes(depth_m)) + geom_histogram(binwidth = 1, fill = "#0072B2", color = "darkblue") +
   facet_wrap(~ sample_year, scales = "free_y") +
   labs(title = "Nutrient measurement depths (variable-specific records)",
        x = "Depth below surface (m)", y = "Count") + theme_minimal()
@@ -390,7 +394,7 @@ ggsave(file.path(fig_dir, "nutrient_sampling_depths.png"), p_depth,
 
 # E. Post-QC environmental patterns
 
-**Interpretive boundary:** These are exploratory summaries of Ecology-hosted measurements, not an additional Ecology QC determination. Analyst-level screening of suitability, NetCDF metadata, unit consistency, and sampling coverage remains incomplete. Do not treat these summaries as validated exposure covariates until that review is complete. This limitation is documented here rather than repeated on individual plots.
+**Interpretation limit:** These are exploratory summaries of Ecology-hosted measurements, not an additional Ecology QC determination. Analyst-level screening of suitability, NetCDF metadata, unit consistency, and sampling coverage remains incomplete. Do not treat these summaries as validated exposure covariates until that review is complete. This limitation is documented here rather than repeated on individual plots.
 
 ## E1. Abiotic profile-level summaries: 0–13 m
 
@@ -436,7 +440,7 @@ abiotic_profile <- abiotic_rope %>%
 write_csv(abiotic_profile, file.path(output_dir, "abiotic_profile_summaries.csv"))
 ```
 
-**Caution:** A profile reaching 12 m is not automatically well represented at every intermediate depth. Inspect number and spacing of bins and missingness per variable; profile means from incomplete sections of the rope can be biased. Depth-bin statistics are exploratory until coverage rules are set.
+**Caution:** A profile reaching 12 m is not automatically well represented at every intermediate depth. Inspect number and spacing of bins and missing-ness per variable; profile means from incomplete sections of the rope can be biased. Depth-bin statistics are exploratory until coverage rules are set.
 
 ## E2. Monthly seasonality (profile means, not individual depth records)
 
@@ -503,14 +507,14 @@ p_depth_month <- ggplot(monthly_depth,
                             depth_bin, fill = median_temp)) +
   geom_tile(color = "white") + scale_fill_viridis_c(na.value = "grey90", name = "°C") +
   labs(title = "Seasonal temperature by depth stratum",
-       subtitle = "Median of profile-bin means",
+       subtitle = "Profile-bin means",
        x = "Month", y = "Depth bin") + theme_minimal()
 print(p_depth_month)
 ggsave(file.path(fig_dir, "depth_bin_month_temperature.png"), p_depth_month,
        width = 10, height = 5, dpi = 200)
 ```
 
-## E4. Nutrient seasonality: retain discrete sample depths
+## E4. Nutrient seasonality: retaining discrete sample depths
 
 ```{r}
 #| label: nutrient-monthly
@@ -524,23 +528,46 @@ nutrient_monthly <- nutrient_long %>%
             .groups = "drop")
 write_csv(nutrient_monthly, file.path(output_dir, "nutrient_monthly_descriptive.csv"))
 
-p_nutrient_month <- nutrient_long %>%
+# Determine which months have observations that will actually be plotted.
+# This reflects the screened data, not a claim about Ecology's sampling schedule.
+nutrient_plot_data <- nutrient_long %>%
   filter(is.finite(value), !(value %in% params$missing_sentinels)) %>%
-  ggplot(aes(factor(month, levels = 1:12, labels = month.abb), value)) +
+  mutate(month_axis = factor(month, levels = 1:12,
+                             labels = substr(month.name, 1, 1)))
+
+months_with_data <- sort(unique(nutrient_plot_data$month[!is.na(nutrient_plot_data$month)]))
+months_without_data <- setdiff(1:12, months_with_data)
+
+# State the May–August gap explicitly only when all four months are absent.
+# Otherwise, report the actual absent months (if any).
+month_gap_note <- if (all(5:8 %in% months_without_data)) {
+  "No valid nutrient observations plotted for May–August."
+} else if (length(months_without_data)) {
+  paste0("No valid nutrient observations plotted for: ",
+         paste(month.abb[months_without_data], collapse = ", "), ".")
+} else {
+  NULL
+}
+
+p_nutrient_month <- nutrient_plot_data %>%
+  ggplot(aes(month_axis, value)) +
   geom_boxplot(outlier.alpha = 0.2, fill = "#009E73") +
+  scale_x_discrete(drop = FALSE) +  # Display all months, including empty ones
   facet_wrap(~ variable, scales = "free_y",
              labeller = labeller(variable = facet_variable_labels)) +
   labs(title = "Monthly nutrient concentrations — sample-level, all depths",
-       x = "Month", y = "Concentration (unit shown in facet)") +
+       subtitle = "No data for May - August",
+       x = "Month (January–December)",
+       y = "Concentration (uM)") +
   theme_minimal()
 print(p_nutrient_month)
 ggsave(file.path(fig_dir, "monthly_nutrient_boxplots.png"), p_nutrient_month,
        width = 11, height = 7, dpi = 200)
 ```
 
-# F. Screening decision and handoff
+# F. Next Steps
 
-**Do not collapse sources into an integrated environmental profile yet.** First decide whether each source supports (1) regional environmental characterization, (2) station-specific characterization, and/or (3) linkage to existing mussel records. These are separate suitability decisions.
+**Goal: create an integrated environmental profile.** Before an IEP can be developed, I need to decide whether each source supports (1) regional environmental characterization, (2) station-specific characterization, and/or (3) linkage to existing mussel records.
 
 ```{r}
 #| label: decision-templates
@@ -581,7 +608,7 @@ undergrad_followup <- tibble(
 write_csv(undergrad_followup, file.path(output_dir, "undergrad_followup_tasks.csv"))
 ```
 
-## F1. Analyst completion checklist
+## F1. Analysis completion checklist
 
 - [ ] Source URL, retrieval date, version, spatial reference and methods recorded.
 - [ ] Original data preserved without destructive alterations.
@@ -596,10 +623,6 @@ write_csv(undergrad_followup, file.path(output_dir, "undergrad_followup_tasks.cs
 - [ ] Inclusion decisions recorded separately for regional, station and mussel-linked work.
 - [ ] Known limitations and follow-up tasks documented for future researchers.
 
-## F2. Expansion to 30+ other source files
+## F2. Expansion to other sources
 
-For each new data source, **copy and rename this QMD** or parameterize its input stage; do not force different observation structures into the Ecology schema without a mapping step. The following columns provide a stable conceptual interface across sources: `source_id`, `provider`, `station_id`, `timestamp`, `latitude`, `longitude`, `depth_m` (if applicable), `variable`, `value`, `unit`, `quality_flag`, `method`, and `original_record_id`. Retain agency-specific fields in supplemental tables rather than discarding them.
-
-A robust central **source inventory** should hold one row per source/version; the **variable dictionary** should hold one row per variable/measurement method; and an **inclusion decision** should exist per source *and intended use*. The station-code crosswalk is a separate, version-controlled table with explicit match confidence and provenance.
-
-For undergraduate handoff, a practical initial deliverable for every source is: (i) completed registry, (ii) metadata and QC interpretation, (iii) missingness/coverage figures, (iv) descriptive plots, (v) one-page suitability memo, and (vi) unresolved questions with links to evidence.
+Each dataset that is available from contaminants to additional water quality and nutrient composition will undergo a similar EDA before combination, application, or interpretation.
