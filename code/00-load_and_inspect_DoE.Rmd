@@ -665,3 +665,120 @@ write_csv(nutrients_all, "../data/working/nutrients_all.csv")
 
 ```
 
+# Left off here for making the table on 10.27.26 - code is incomplete.
+##Sampling site identifiers
+```{r}
+#install.packages("writexl")
+library("writexl")
+
+# don't forget to replace the working object name for the sampling site inventory
+working_dir <- "../data/working"
+clean <- "../data/_cleaned/doe_nutrients_all.csv"
+
+# A. Identify distinct combinations of station and coordinates
+doe_locations <- clean |>
+  transmute(profile_index, profile_uid, station_number, station_name, latitude, longitude
+  ) |>
+  distinct() |>
+  arrange(station_number, station_name, profile_uid)
+
+# B. Audit variations within each source-study-site ID
+site_audit <- noaa_locations |>
+  group_by(source, study, site_id) |>
+  summarise(
+    n_site_names = n_distinct(site_name, na.rm = TRUE),
+    n_coordinate_pairs = n_distinct(
+      paste(latitude, longitude),
+      na.rm = TRUE
+    ),
+    n_missing_coordinates = sum(
+      is.na(latitude) | is.na(longitude)
+    ),
+    .groups = "drop"
+  ) |>
+  mutate(
+    review_status = case_when(
+      is.na(site_id) | site_id == "" ~
+        "Missing site ID",
+      n_missing_coordinates > 0 ~
+        "Review missing coordinates",
+      n_site_names > 1 | n_coordinate_pairs > 1 ~
+        "Review site variation",
+      TRUE ~ "Unique site definition"
+    )
+  )
+
+# C. Produce one row per source-study-site ID.
+# Coordinates are retained only when the site has one
+# unique non-missing coordinate pair.
+noaa_identifiers <- noaa_locations |>
+  left_join(
+    site_audit,
+    by = c("source", "study", "site_id")
+  ) |>
+  group_by(source, study, site_id) |>
+  summarise(
+    site_name = if (n_distinct(site_name,
+                              na.rm = TRUE) == 1) {
+      first(na.omit(site_name))
+    } else {
+      NA_character_
+    },
+    latitude = if (
+      first(n_coordinate_pairs) == 1 &&
+      first(n_missing_coordinates) == 0
+    ) first(latitude) else NA_real_,
+    longitude = if (
+      first(n_coordinate_pairs) == 1 &&
+      first(n_missing_coordinates) == 0
+    ) first(longitude) else NA_real_,
+    .groups = "drop"
+  ) |>
+  arrange(study, site_id)
+
+# D. Retain all requested fields in the CSV
+write_csv(
+  noaa_identifiers,
+  file.path(working_dir, "noaa_site_identifiers.csv")
+)
+
+# E. Create a station crosswalk template
+crosswalk <- noaa_identifiers |>
+  left_join(
+    site_audit,
+    by = c("source", "study", "site_id")
+  ) |>
+  mutate(
+    matched_agency = NA_character_,
+    matched_site_id = NA_character_,
+    matched_site_name = NA_character_,
+    match_type = NA_character_,
+    match_status = "Not reviewed",
+    reviewer = NA_character_,
+    review_notes = NA_character_
+  )
+
+# F. Export a workbook with supporting audit sheets
+write_xlsx(
+  list(
+    NOAA_Identifiers = noaa_identifiers,
+    Crosswalk_Review = crosswalk,
+    Coordinate_Variants = noaa_locations,
+    Identifier_Audit = site_audit
+  ),
+  path = file.path(
+    working_dir,
+    "noaa_station_crosswalk.xlsx"
+  )
+)
+
+# G. Confirm outputs
+cat("Unique NOAA station IDs:", nrow(noaa_identifiers), "\n")
+cat(
+  "Stations requiring review:",
+  sum(site_audit$review_status != "Unique site definition"),
+  "\n"
+)
+
+
+```

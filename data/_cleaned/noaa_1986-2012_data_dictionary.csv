@@ -1,0 +1,22 @@
+variable,description
+source,Original data source
+study,NOAA study or monitoring region
+site_id,Original NOAA station identifier
+site_name,General sampling location
+specific_location,Specific sampling location designation
+sample_id,Original sample identifier
+latitude,Latitude in decimal degrees
+longitude,Longitude in decimal degrees
+fiscal_year,NOAA fiscal or reporting year
+collection_date,Sample collection date
+collection_year,Calendar year of sample collection
+matrix,"Sample matrix (e.g., tissue or sediment)"
+species,Scientific name or reported sample material
+method,Laboratory analytical method
+analyte,Measured chemical or parameter
+concentration_raw,Original reported result as text
+concentration,Reported numeric concentration
+qualifier,Original measurement qualifier
+unit_original,Original concentration unit
+detection_status,Derived detection classification
+concentration_for_analysis,Numeric result excluding flagged measurements

@@ -15,6 +15,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(data.table)
 library(dplyr) #data format manipulation
 library(janitor)
+library(lubridate)
 library(ncdf4) #read nc files (3 and 4 type)
 library(purrr) #avoiding loops to extract data from vectors and then build abiotic/ nutrients tables
 library(readr) #write out or read in tables
@@ -23,18 +24,291 @@ library(tibble) #creating tables
 library(tidyr)
 
 
-# Run from the mytilus_ec project root
+
 file_path <- "../data/raw/nccos_chem_data.txt"
 
-stopifnot(file.exists(file_path))
 
-# Inspect the file before parsing
-file.info(file_path)$size / 1024^2
+# Import all fields as character to preserve values
+noaa_raw <- fread(
+  file_path,
+  sep = "\t",
+  header = TRUE,
+  colClasses = "character",
+  na.strings = NULL,
+  data.table = FALSE
+) |>
+  janitor::remove_empty("cols") |>
+  janitor::clean_names()
 
-# First 12 lines
-readLines(file_path, n = 12, warn = FALSE)
-
-
-#glimpse(ncXX)
+# Inspect structure
+dim(noaa_raw)
+names(noaa_raw)
+glimpse(noaa_raw)
 
 ```
+
+```{r}
+
+# Audit matrices before filtering
+noaa_raw |>
+  count(matrix, scientific_name, sort = TRUE)
+
+# Check actual temporal coverage
+noaa_raw |>
+  mutate(
+    year = as.integer(fiscal_year),
+    collection_date_parsed = mdy_hms(
+      collection_date,
+      quiet = TRUE
+    )
+  ) |>
+  summarise(
+    first_year = min(year, na.rm = TRUE),
+    last_year = max(year, na.rm = TRUE),
+    first_collection = min(
+      collection_date_parsed,
+      na.rm = TRUE
+    ),
+    last_collection = max(
+      collection_date_parsed,
+      na.rm = TRUE
+    )
+  )
+
+# Inventory qualifier types
+noaa_raw |>
+  count(qualifier, sort = TRUE)
+
+# Inventory units across sample matrices
+noaa_raw |>
+  count(matrix, unit, sort = TRUE)
+
+# Inventory analytical methods
+noaa_raw |>
+  count(method, sort = TRUE)
+
+write_csv(noaa_raw, "../data/raw/noaa_raw1986-2012.csv")
+#glimpse(XX)
+
+```
+
+
+# Create a standardized dataset 
+```{r}
+
+# Create shared working directory if necessary
+working_dir <- "../data/_cleaned"
+
+
+# Standardize all NOAA chemistry records
+noaa_clean <- noaa_raw |>
+  transmute(
+    source = "NOAA_NCCOS_NST",
+    study,
+    site_id = nst_site,
+    site_name = general_location,
+    specific_location,
+    sample_id,
+    latitude = parse_double(latitude),
+    longitude = parse_double(longitude),
+    fiscal_year = as.integer(fiscal_year),
+    collection_date = as.Date(
+      mdy_hms(collection_date, quiet = TRUE)
+    ),
+    matrix,
+    species = scientific_name,
+    method,
+    analyte = parameter,
+    concentration_raw = value,
+    concentration = parse_double(value),
+    qualifier = na_if(str_trim(qualifier), ""),
+    unit_original = unit
+  ) |>
+  mutate(
+    collection_year = year(collection_date),
+    detection_status = case_when(
+      str_to_lower(qualifier) == "not detected" ~
+        "non_detect",
+      str_to_lower(qualifier) == "below the mdl" ~
+        "below_mdl",
+      is.na(qualifier) ~
+        "unqualified",
+      TRUE ~ "other_qualified"
+    ),
+    concentration_for_analysis = if_else(
+      detection_status %in%
+        c("non_detect", "below_mdl", "other_qualified"),
+      NA_real_,
+      concentration
+    )
+  ) |>
+  relocate(collection_year, .after = collection_date)
+
+# Export as a standard CSV
+write_csv(noaa_clean, file.path(working_dir,"noaa_cleaned1986-2012.csv"), na = "")
+
+```
+
+# Data Dictionary
+```{r}
+
+
+noaa_dictionary <- tibble(
+  variable = names(noaa_clean),
+  description = c(
+    "Original data source",
+    "NOAA study or monitoring region",
+    "Original NOAA station identifier",
+    "General sampling location",
+    "Specific sampling location designation",
+    "Original sample identifier",
+    "Latitude in decimal degrees",
+    "Longitude in decimal degrees",
+    "NOAA fiscal or reporting year",
+    "Sample collection date",
+    "Calendar year of sample collection",
+    "Sample matrix (e.g., tissue or sediment)",
+    "Scientific name or reported sample material",
+    "Laboratory analytical method",
+    "Measured chemical or parameter",
+    "Original reported result as text",
+    "Reported numeric concentration",
+    "Original measurement qualifier",
+    "Original concentration unit",
+    "Derived detection classification",
+    "Numeric result excluding flagged measurements"
+  )
+)
+
+write_csv(
+  noaa_dictionary,
+  file.path(
+    working_dir,
+    "noaa_1986-2012_data_dictionary.csv"
+  )
+)
+
+
+```
+
+# Sampling site identifiers
+```{r}
+#install.packages("writexl")
+library("writexl")
+
+working_dir <- "../data/working"
+
+# A. Identify distinct combinations of station and coordinates
+noaa_locations <- noaa_clean |>
+  transmute(
+    source,
+    study,
+    site_id,
+    site_name,
+    latitude,
+    longitude
+  ) |>
+  distinct() |>
+  arrange(study, site_id, site_name)
+
+# B. Audit variations within each source-study-site ID
+site_audit <- noaa_locations |>
+  group_by(source, study, site_id) |>
+  summarise(
+    n_site_names = n_distinct(site_name, na.rm = TRUE),
+    n_coordinate_pairs = n_distinct(
+      paste(latitude, longitude),
+      na.rm = TRUE
+    ),
+    n_missing_coordinates = sum(
+      is.na(latitude) | is.na(longitude)
+    ),
+    .groups = "drop"
+  ) |>
+  mutate(
+    review_status = case_when(
+      is.na(site_id) | site_id == "" ~
+        "Missing site ID",
+      n_missing_coordinates > 0 ~
+        "Review missing coordinates",
+      n_site_names > 1 | n_coordinate_pairs > 1 ~
+        "Review site variation",
+      TRUE ~ "Unique site definition"
+    )
+  )
+
+# C. Produce one row per source-study-site ID.
+# Coordinates are retained only when the site has one
+# unique non-missing coordinate pair.
+noaa_identifiers <- noaa_locations |>
+  left_join(
+    site_audit,
+    by = c("source", "study", "site_id")
+  ) |>
+  group_by(source, study, site_id) |>
+  summarise(
+    site_name = if (n_distinct(site_name,
+                              na.rm = TRUE) == 1) {
+      first(na.omit(site_name))
+    } else {
+      NA_character_
+    },
+    latitude = if (
+      first(n_coordinate_pairs) == 1 &&
+      first(n_missing_coordinates) == 0
+    ) first(latitude) else NA_real_,
+    longitude = if (
+      first(n_coordinate_pairs) == 1 &&
+      first(n_missing_coordinates) == 0
+    ) first(longitude) else NA_real_,
+    .groups = "drop"
+  ) |>
+  arrange(study, site_id)
+
+# D. Retain all requested fields in the CSV
+write_csv(
+  noaa_identifiers,
+  file.path(working_dir, "noaa_site_identifiers.csv")
+)
+
+# E. Create a station crosswalk template
+crosswalk <- noaa_identifiers |>
+  left_join(
+    site_audit,
+    by = c("source", "study", "site_id")
+  ) |>
+  mutate(
+    matched_agency = NA_character_,
+    matched_site_id = NA_character_,
+    matched_site_name = NA_character_,
+    match_type = NA_character_,
+    match_status = "Not reviewed",
+    reviewer = NA_character_,
+    review_notes = NA_character_
+  )
+
+# F. Export a workbook with supporting audit sheets
+write_xlsx(
+  list(
+    NOAA_Identifiers = noaa_identifiers,
+    Crosswalk_Review = crosswalk,
+    Coordinate_Variants = noaa_locations,
+    Identifier_Audit = site_audit
+  ),
+  path = file.path(
+    working_dir,
+    "noaa_station_crosswalk.xlsx"
+  )
+)
+
+# G. Confirm outputs
+cat("Unique NOAA station IDs:", nrow(noaa_identifiers), "\n")
+cat(
+  "Stations requiring review:",
+  sum(site_audit$review_status != "Unique site definition"),
+  "\n"
+)
+
+
+```
+
